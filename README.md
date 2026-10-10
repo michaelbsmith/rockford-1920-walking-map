@@ -28,3 +28,4 @@ The street network is today's OpenStreetMap network, not 1920's. Public transpor
 ## Credits
 
 Street data © OpenStreetMap contributors (ODbL); basemap © OpenFreeMap, © OpenMapTiles; based on "15 minutes. For whom?" by Martin Bangratz (MIT, see LICENSE). Business listings: McCoy's Rockford City Directory (1920), geocoded with the U.S. Census Bureau geocoder.
+ 

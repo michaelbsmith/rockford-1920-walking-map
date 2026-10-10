@@ -323,6 +323,9 @@ const BASEMAP_STYLE = "https://tiles.openfreemap.org/styles/positron";
 // While it is empty the page uses the free Photon service (OpenStreetMap data) instead.
 const MAPBOX_TOKEN = "pk.eyJ1IjoibWljaGFlbC1zbWl0aCIsImEiOiJjbXYxcmJxcTgwOTI2MzBwemRvaDE3OW0wIn0.eb_XtYRzSeTXq82kUy3LhQ";
 const SEARCH_BBOX = [-89.30, 42.15, -88.90, 42.40];   // minLon, minLat, maxLon, maxLat: the Rockford area
+// Street View thumbnails in the popups need a Google Maps Platform API key (Street View Static API enabled,
+// restricted to this site's address). While it is empty the popups show only the "Open in Google Street View" link.
+const GOOGLE_STREETVIEW_KEY = "AIzaSyBDrYXH0dGApWAXNxneF5F9T555pRsPEI8";
 const DATA_ROOT = "data/";   // one folder per city, plus cities.json (the list for the menu)
 const REF_SPEED = 1.4;                        // reference walking speed, m/s (the slider default)
 const CAT_COLORS = ["#5b9a3c", "#d9534f", "#e8a13a", "#7b5ea7", "#2e8b57", "#1f7a99", "#6b6f76"];
@@ -683,8 +686,12 @@ function businessesAt(e) {
   }
   return hits.sort((a, b) => a[0] - b[0]).slice(0, 8).map(h => h[1]);
 }
+const streetViewUrl = (lat, lng) => "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=" + lat.toFixed(6) + "," + lng.toFixed(6);
 function popupHtml(hits) {
-  return hits.map(i => {
+  const first = POIS.pts[hits[0]];
+  const sv = `<div class="svthumb" data-lat="${first[1]}" data-lng="${first[0]}"></div>`
+    + `<div style="margin:2px 0 6px"><a href="${streetViewUrl(first[1], first[0])}" target="_blank" rel="noopener">Open in Google Street View &#8599;</a><br><span style="font-size:11px;color:#777">Shows the site today. The 1920 building may be gone, and the dot is placed from the address.</span></div>`;
+  return sv + hits.map(i => {
     const p = POIS.pts[i];
     return `<div style="margin:0 0 8px"><b>${esc(p[4] || "Unnamed listing")}</b><br>${esc(p[5])}<br><span style="color:#555">${esc(p[6])}</span><br><span style="font-size:12px"><span class="dot" style="background:${CAT_COLORS[p[2]]};width:8px;height:8px"></span>${esc(POIS.cats[p[2]])}</span></div>`;
   }).join("") + '<div style="font-size:11px;color:#777">McCoy\'s Rockford City Directory, 1920</div>';
@@ -706,6 +713,26 @@ $("stats").addEventListener("click", ev => {
   const c = +row.dataset.c;
   if (ev.target.tagName === "INPUT") catOn[c] = ev.target.checked; else catOn[c] = !catOn[c];
   map.closePopup(); showStatsAgain(); draw(); updateQInfo();
+});
+
+// Street View thumbnail: ask Google whether imagery exists (this metadata request is free), then show the picture.
+map.on("popupopen", ev => {
+  if (!GOOGLE_STREETVIEW_KEY) return;
+  const box = ev.popup.getElement() && ev.popup.getElement().querySelector(".svthumb");
+  if (!box) return;
+  const loc = box.dataset.lat + "," + box.dataset.lng, key = encodeURIComponent(GOOGLE_STREETVIEW_KEY);
+  fetch("https://maps.googleapis.com/maps/api/streetview/metadata?location=" + loc + "&source=outdoor&key=" + key)
+    .then(r => r.json()).then(m => {
+      if (m.status !== "OK") return;
+      const src = "https://maps.googleapis.com/maps/api/streetview?size=480x280&fov=80&source=outdoor&location=" + loc + "&key=" + key;
+      const img = new Image();
+      img.onload = () => {   // put the picture into the popup's own content, so the popup resizes and stays on screen
+        const html = ev.popup.getContent();
+        if (typeof html !== "string" || html.indexOf("<img") !== -1) return;
+        ev.popup.setContent(html.replace(/(<div class="svthumb"[^>]*>)<\/div>/, '$1<img alt="Street View of the site today" src="' + src + '" style="width:100%;border-radius:4px;margin:0 0 6px;display:block"></div>'));
+      };
+      img.src = src;
+    }).catch(() => { /* no thumbnail: the link is still there */ });
 });
 
 // ---------- counts within 1, 2 and 3 miles (straight line) of the start point ----------
@@ -759,7 +786,7 @@ $("qgeo").addEventListener("click", ev => {
   const h = todayHits[+el.dataset.g]; if (!h) return;
   clearFilter(); pinned = -1; origin = L.latLng(h.lat, h.lng); marker.setLatLng(origin); schedule();
   map.setView(origin, Math.max(map.getZoom(), 16));
-  L.popup({ maxWidth: 260, offset: [0, -28] }).setLatLng(origin).setContent("<b>" + esc(h.title) + "</b><br>" + esc(h.sub) + '<br><span style="font-size:12px;color:#555">Start point set here</span>').openOn(map);
+  L.popup({ maxWidth: 260, offset: [0, -28] }).setLatLng(origin).setContent("<b>" + esc(h.title) + "</b><br>" + esc(h.sub) + '<br><a href="' + streetViewUrl(h.lat, h.lng) + '" target="_blank" rel="noopener">Open in Google Street View &#8599;</a><br><span style="font-size:12px;color:#555">Start point set here</span>').openOn(map);
 });
 
 // ---------- search: business name, type of business, or address ----------

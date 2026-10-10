@@ -747,23 +747,25 @@ async function lookupToday(text, seq) {
 $("qgeo").addEventListener("click", ev => {
   const el = ev.target.closest(".hit"); if (!el) return;
   const h = todayHits[+el.dataset.g]; if (!h) return;
-  pinned = -1; origin = L.latLng(h.lat, h.lng); marker.setLatLng(origin); schedule();
+  clearFilter(); pinned = -1; origin = L.latLng(h.lat, h.lng); marker.setLatLng(origin); schedule();
   map.setView(origin, Math.max(map.getZoom(), 16));
   L.popup({ maxWidth: 260, offset: [0, -28] }).setLatLng(origin).setContent("<b>" + esc(h.title) + "</b><br>" + esc(h.sub) + '<br><span style="font-size:12px;color:#555">Start point set here</span>').openOn(map);
 });
 
 // ---------- search: business name, type of business, or address ----------
-let FILTER = null, pinned = -1, matchList = [], qTimer = null, geoCount = 0, todayHits = [];
+let noMatches = false, FILTER = null, pinned = -1, matchList = [], qTimer = null, geoCount = 0, todayHits = [];
 const norm = t => String(t || "").toLowerCase().replace(/[^a-z0-9& ]+/g, " ").replace(/\s+/g, " ").trim();
 function runSearch() {
   const tokens = norm($("q").value).split(" ").filter(Boolean);
   pinned = -1; map.closePopup();
   const geoSeq = ++geoCount; $("qgeo").innerHTML = "";
   if (tokens.length && norm($("q").value).length >= 3) setTimeout(() => lookupToday($("q").value.trim(), geoSeq), 250);
-  if (!tokens.length || !POIS) { FILTER = null; matchList = []; $("qres").innerHTML = ""; updateQInfo(); draw(); return; }
+  if (!tokens.length || !POIS) { FILTER = null; matchList = []; noMatches = false; $("qres").innerHTML = ""; updateQInfo(); draw(); return; }
   if (!POIS.text) POIS.text = POIS.pts.map(p => norm(p[4] + " " + p[5] + " " + p[6]));
   FILTER = new Uint8Array(POIS.pts.length); matchList = [];
   for (let i = 0; i < POIS.pts.length; i++) if (tokens.every(t => POIS.text[i].includes(t))) { FILTER[i] = 1; matchList.push(i); }
+  noMatches = !matchList.length;
+  if (noMatches) FILTER = null;   // typing an address that is not in the directory should not hide the dots
   // list: businesses inside your reach first
   const inReach = i => state && state.inAdj[i] ? 0 : 1;
   const shown = matchList.slice().sort((a, b) => inReach(a) - inReach(b)).slice(0, 8);
@@ -772,8 +774,11 @@ function runSearch() {
     + (matchList.length > shown.length ? `<div class="note" style="margin-top:4px">Showing ${shown.length} of ${matchList.length}. All matches in your reach are on the map.</div>` : "");
   updateQInfo(); draw();
 }
+function clearFilter() {   // after a result is picked the box keeps its text, but all the dots come back
+  FILTER = null; matchList = []; noMatches = false; $("qres").innerHTML = ""; $("qgeo").innerHTML = ""; updateQInfo();
+}
 function updateQInfo() {
-  if (!FILTER) { $("qinfo").textContent = ""; return; }
+  if (!FILTER) { $("qinfo").textContent = noMatches ? "No 1920 listing matches that search." : ""; return; }
   let n = 0; if (state) for (const i of matchList) if (state.inAdj[i] && catOn[POIS.pts[i][2]]) n++;
   $("qinfo").textContent = matchList.length ? `${n} of ${matchList.length} matching listings are within your reach. Only those are shown.` : "No listing matches that search.";
 }
@@ -782,7 +787,7 @@ $("qres").addEventListener("click", ev => {
   const el = ev.target.closest(".hit"); if (!el) return;
   const i = +el.dataset.i, p = POIS.pts[i];
   const same = POIS.pts.map((q, k) => k).filter(k => POIS.pts[k][0] === p[0] && POIS.pts[k][1] === p[1]).slice(0, 8);
-  pinned = i;
+  clearFilter(); pinned = i;
   origin = L.latLng(p[1], p[0]); marker.setLatLng(origin); schedule();   // the picked address becomes the start point
   map.setView([p[1], p[0]], Math.max(map.getZoom(), 17));
   L.popup({ maxWidth: 280, maxHeight: 260, offset: [0, -6] }).setLatLng([p[1], p[0]]).setContent(popupHtml(same)).openOn(map);

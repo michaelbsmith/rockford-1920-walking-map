@@ -50,9 +50,29 @@
   #status.err { color: #b3261e; }
   #map { flex: 1; }
   .leaflet-container { background: #f1efe9; }
-  @media (max-width: 700px) { body { flex-direction: column-reverse; } #panel { width: 100%; height: 55%; padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px)); padding-left: calc(20px + env(safe-area-inset-left, 0px)); padding-right: calc(20px + env(safe-area-inset-right, 0px)); } }
+  .sheet-handle { display: none; }
+  /* Phones: the map fills the screen and the panel becomes a sheet you swipe up (collapsed / half / full). */
+  @media (max-width: 700px) {
+    body { display: block; }
+    #map { position: fixed; inset: 0; z-index: 1; }
+    #panel { position: fixed; top: 0; left: 0; right: 0; bottom: 0; width: 100%; height: auto; z-index: 5;
+      display: flex; flex-direction: column;
+      padding: 0 calc(20px + env(safe-area-inset-right, 0px)) calc(20px + max(0px, var(--sheet-y, 0px)) + env(safe-area-inset-bottom, 0px)) calc(20px + env(safe-area-inset-left, 0px));
+      background: rgba(247, 244, 236, 0.93); -webkit-backdrop-filter: blur(18px) saturate(160%); backdrop-filter: blur(18px) saturate(160%);
+      border-radius: 16px 16px 0 0; box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.18);
+      transform: translateY(var(--sheet-y, calc(100% - 150px))); will-change: transform; }
+    #panel > * { order: 3; flex-shrink: 0; }
+    #panel > #sheetHandle { order: 0; display: flex; align-items: center; justify-content: center; padding: 14px 0 10px; cursor: grab; touch-action: none; }
+    .sheet-handle-bar { width: 38px; height: 5px; border-radius: 3px; background: #c9c4b4; }
+    #panel > h1 { order: 1; font-size: 22px; margin: 0 0 10px; touch-action: none; -webkit-user-select: none; user-select: none; }
+    #panel h1 br { display: none; }
+    #panel h1 span::before { content: " "; }
+    #panel > #qBlock { order: 2; margin: 0 0 6px; }
+    #panel.sheet-dragging { cursor: grabbing; }
+    .leaflet-bottom { bottom: var(--peek, 130px); }
+  }
   /* touch screens: 16px inputs stop iOS zooming the page; bigger tap targets */
-  @media (max-width: 700px) { .leaflet-popup-content { max-height: 190px; } }
+  @media (max-width: 700px) { .leaflet-popup-content { max-height: min(42dvh, 320px); } }
   @media (pointer: coarse) {
     #q, #city, #sbYear { font-size: 16px !important; }
     button { min-height: 44px; padding: 10px 14px; }
@@ -67,13 +87,14 @@
 </head>
 <body>
 <div id="panel">
-  <h1>Rockford 1920<br><span>Walking Reach</span></h1>
+  <div id="sheetHandle" class="sheet-handle" aria-hidden="true"><span class="sheet-handle-bar"></span></div>
+  <h1 id="sheetTitle">Rockford 1920<br><span>Walking Reach</span></h1>
   <div class="note">Click the map or drag the marker. Coloured streets are what you can reach with your settings, coloured by walking time. Grey streets are what a walker at 1.4 m/s (the default speed) could reach. Dots are businesses listed in <i>McCoy's Rockford City Directory</i> (1920).</div>
 
   <div class="ctl" id="cityBox" style="display:none"><label>City
     <select id="city" style="width:100%;font:inherit;padding:4px"></select></label></div>
 
-  <div class="ctl" style="margin-top:12px"><input type="search" id="q" placeholder="Search a 1920 business, or type any address…" autocomplete="off" style="width:100%;font:inherit;padding:7px 8px;border:1px solid #bbb;border-radius:4px">
+  <div class="ctl" id="qBlock" style="margin-top:12px"><input type="search" id="q" placeholder="Search a 1920 business, or type any address…" autocomplete="off" style="width:100%;font:inherit;padding:7px 8px;border:1px solid #bbb;border-radius:4px">
     <div class="note" id="qinfo" style="margin-top:4px"></div><div id="qres"></div><div id="qgeo"></div></div>
 
   <div class="ctl"><label>Time budget: <b id="minOut">15</b> min
@@ -1036,6 +1057,104 @@ $("city").addEventListener("change", () => {
   const id = CITIES.some(c => c.id === wanted) ? wanted : (CITIES.some(c => c.id === "rockford") ? "rockford" : CITIES[0].id);
   $("city").value = id;
   await loadCity(id, false);
+})();
+
+// ---------- phones: the panel is a bottom sheet you swipe up ----------
+// Three resting heights: collapsed (title + search), half, full. It follows your finger 1:1, can be grabbed again
+// while it is still moving, a flick throws it toward where the gesture was heading, and it springs to rest.
+(function () {
+  const panel = $("panel"), handle = $("sheetHandle"), title = $("sheetTitle"), q = $("q");
+  const mq = matchMedia("(max-width: 700px)"), reduce = matchMedia("(prefers-reduced-motion: reduce)");
+  const isMobile = () => mq.matches;
+  const FULL_MARGIN = 48;
+  let state = "collapsed", y = 0, vel = 0, raf = 0;
+  const probe = document.createElement("div");   // reads the iPhone home-bar height so the search box is never under it
+  probe.style.cssText = "position:fixed;left:0;bottom:0;width:0;height:0;visibility:hidden;padding-bottom:env(safe-area-inset-bottom,0px)";
+  document.body.appendChild(probe);
+  const pts = () => {
+    const h = panel.offsetHeight || innerHeight;
+    const safe = parseFloat(getComputedStyle(probe).paddingBottom) || 0;
+    const peek = Math.min(h * 0.6, q.offsetTop + q.offsetHeight + 10 + safe);   // handle, title and the search box stay visible
+    return { collapsed: Math.max(0, h - peek), half: Math.max(0, h * 0.5), full: FULL_MARGIN };
+  };
+  const setY = v => { y = v; panel.style.setProperty("--sheet-y", v.toFixed(1) + "px"); };
+  const rubber = (over, dim) => (over * dim * 0.55) / (dim + 0.55 * Math.abs(over));   // resistance grows past the edge
+  const bounded = raw => { const p = pts(), D = 150;   // D: how soft the edge is (smaller = stiffer)
+    return raw < p.full ? p.full - rubber(p.full - raw, D) : raw > p.collapsed ? p.collapsed + rubber(raw - p.collapsed, D) : raw; };
+  const nearest = v => { const p = pts(); let best = "collapsed", d = Infinity;
+    for (const k of Object.keys(p)) if (Math.abs(p[k] - v) < d) { d = Math.abs(p[k] - v); best = k; } return best; };
+  const project = v => (v / 1000) * 0.998 / (1 - 0.998);   // where a flick at v px/s would come to rest (Apple's scroll deceleration)
+
+  // spring (response 0.3 s). Critically damped for taps; a little bounce only when a flick gave it momentum.
+  function springTo(target, v0, damping) {
+    cancelAnimationFrame(raf);
+    if (reduce.matches) { setY(target); panel.classList.remove("sheet-dragging"); return; }
+    const resp = 0.3, k = Math.pow(2 * Math.PI / resp, 2), c = 4 * Math.PI * damping / resp;
+    let v = v0 || 0, last = performance.now();
+    const step = now => {
+      const dt = Math.min(0.064, (now - last) / 1000); last = now;
+      const n = Math.max(1, Math.ceil(dt / 0.004)), h = dt / n;
+      let pos = y;
+      for (let i = 0; i < n; i++) { v += (-k * (pos - target) - c * v) * h; pos += v * h; }
+      setY(pos);
+      if (Math.abs(pos - target) < 0.4 && Math.abs(v) < 8) { setY(target); raf = 0; return; }
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+  }
+  function goTo(name, v0, damping) { state = name; springTo(pts()[name], v0, damping == null ? 1 : damping); }
+  const cycle = { collapsed: "half", half: "full", full: "collapsed" };
+
+  // drag: from the handle or the title
+  let drag = null;
+  function down(e) {
+    if (!isMobile() || (e.pointerType === "mouse" && e.button !== 0)) return;
+    cancelAnimationFrame(raf); raf = 0;                       // grab it mid-flight: carry on from where it is now
+    drag = { id: e.pointerId, startPtr: e.clientY, startY: y, moved: false, hist: [{ t: e.timeStamp, y }] };
+    panel.classList.add("sheet-dragging");
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) { /* older browsers */ }
+  }
+  function move(e) {
+    if (!drag || e.pointerId !== drag.id) return;
+    const dy = e.clientY - drag.startPtr;
+    if (!drag.moved && Math.abs(dy) < 4) return;                // small hysteresis before it counts as a drag
+    drag.moved = true;
+    setY(bounded(drag.startY + dy));
+    drag.hist.push({ t: e.timeStamp, y }); while (drag.hist.length > 2 && e.timeStamp - drag.hist[0].t > 100) drag.hist.shift();
+  }
+  function up(e) {
+    if (!drag || e.pointerId !== drag.id) return;
+    const d = drag; drag = null; panel.classList.remove("sheet-dragging");
+    if (!d.moved) { goTo(cycle[state], 0, 1); return; }          // a tap on the handle steps to the next height
+    const a = d.hist[0], b = d.hist[d.hist.length - 1], dt = Math.max(1, b.t - a.t);
+    let v = (b.y - a.y) / dt * 1000;                            // px per second at release
+    if (e.timeStamp - b.t > 80) v = 0;                          // finger rested before letting go
+    const target = nearest(y + project(v));
+    goTo(target, v, Math.abs(v) > 300 ? 0.85 : 1);
+  }
+  for (const el of [handle, title]) {
+    el.addEventListener("pointerdown", down); el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", up); el.addEventListener("pointercancel", up);
+  }
+
+  // layout changes: rotate, resize, or crossing the phone breakpoint
+  function layout() {
+    document.documentElement.style.setProperty("--peek", Math.round((panel.offsetHeight || innerHeight) - pts().collapsed) + "px");   // keeps the map credits above the collapsed sheet
+    L.Popup.prototype.options.autoPanPaddingBottomRight = isMobile() ? L.point(10, 160) : L.point(5, 5);
+    if (isMobile()) { cancelAnimationFrame(raf); setY(pts()[state]); }
+    else { panel.style.removeProperty("--sheet-y"); }
+    setTimeout(() => map.invalidateSize(), 0);
+  }
+  addEventListener("resize", layout);
+  (mq.addEventListener ? mq.addEventListener("change", layout) : mq.addListener(layout));
+  layout();
+
+  // keep the sheet out of the way when the map is being used, and open it when the search is
+  map.on("popupopen", () => { if (isMobile() && state !== "collapsed") goTo("collapsed", 0, 1); });
+  map.on("click", () => { if (isMobile() && state === "full") goTo("half", 0, 1); });
+  q.addEventListener("focus", () => { if (isMobile() && state === "collapsed") goTo("half", 0, 1); });
+  q.addEventListener("input", () => { if (isMobile() && state === "collapsed" && q.value) goTo("half", 0, 1); });
+  for (const id of ["qres", "qgeo"]) $(id).addEventListener("click", ev => { if (isMobile() && ev.target.closest(".hit")) goTo("collapsed", 0, 1); });
 })();
 </script>
 </body>

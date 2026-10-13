@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f7f4ec">
 <title>Rockford 1920 Walking Reach</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🚶</text></svg>">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -10,9 +11,10 @@
 <style>
   :root { --ink:#15171a; --paper:#f7f4ec; --teal:#1f7a99; }
   * { box-sizing: border-box; }
-  html, body { height: 100%; margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; color: var(--ink); }
-  body { display: flex; }
-  #panel { width: 360px; padding: 20px; background: var(--paper); overflow-y: auto; font-size: 14px; z-index: 2; }
+  html { -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; margin: 0; overscroll-behavior: none; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; color: var(--ink); }
+  body { display: flex; height: 100vh; height: 100dvh; }
+  #panel { width: 360px; padding: 20px; background: var(--paper); overflow-y: auto; overscroll-behavior: contain; font-size: 14px; z-index: 2; }
   h1 { font-weight: 800; font-size: 32px; line-height: 1; margin: 0 0 6px; }
   h1 span { color: var(--teal); }
   .ctl { margin: 14px 0; }
@@ -25,7 +27,8 @@
   tr.catrow.off td { opacity: .45; }
   tr.catrow input { margin: 0 6px 0 0; vertical-align: -1px; }
   #qres div.hit { padding: 5px 4px; border-bottom: 1px solid #ddd; cursor: pointer; font-size: 13px; line-height: 1.3; }
-  #qres div.hit:hover { background: #ece8dc; }
+  @media (hover: hover) and (pointer: fine) { #qres div.hit:hover { background: #ece8dc; } tr.catrow:hover td { background: #efebe0; } }
+  #qres div.hit:active, tr.catrow:active td { background: #e4dfd0; }
   #qres div.hit span { color: #666; font-size: 12px; }
   .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
   .keyline { display: inline-block; width: 18px; height: 3px; border-radius: 2px; margin-left: 4px; vertical-align: middle; }
@@ -33,11 +36,33 @@
   #legend { height: 10px; border-radius: 5px; margin: 6px 0 2px; }
   #legendLabels { display: flex; justify-content: space-between; font-size: 12px; }
   button { font: inherit; padding: 6px 10px; cursor: pointer; }
+  button, tr.catrow, #qres div.hit, label { touch-action: manipulation; }
+  button, tr.catrow { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  button:active { transform: scale(.97); }
+  button { transition: transform 120ms cubic-bezier(.23,1,.32,1); }
+  /* long text from the directory must wrap, not push the panel sideways */
+  #qres, #qgeo, #stats, #radii, .leaflet-popup-content { overflow-wrap: anywhere; }
+  td:first-child { min-width: 0; }
+  td { font-variant-numeric: tabular-nums; }
+  .leaflet-popup-content { max-height: 55vh; max-height: 55dvh; overflow-y: auto; overscroll-behavior: contain; }
+  .leaflet-popup-content .dot { flex-shrink: 0; }
   #status { min-height: 2.6em; margin-top: 8px; font-size: 13px; }
   #status.err { color: #b3261e; }
   #map { flex: 1; }
   .leaflet-container { background: #f1efe9; }
-  @media (max-width: 700px) { body { flex-direction: column-reverse; } #panel { width: 100%; height: 55%; } }
+  @media (max-width: 700px) { body { flex-direction: column-reverse; } #panel { width: 100%; height: 55%; padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px)); padding-left: calc(20px + env(safe-area-inset-left, 0px)); padding-right: calc(20px + env(safe-area-inset-right, 0px)); } }
+  /* touch screens: 16px inputs stop iOS zooming the page; bigger tap targets */
+  @media (max-width: 700px) { .leaflet-popup-content { max-height: 190px; } }
+  @media (pointer: coarse) {
+    #q, #city, #sbYear { font-size: 16px !important; }
+    button { min-height: 44px; padding: 10px 14px; }
+    tr.catrow td { padding: 9px 0; }
+    tr.catrow input, .ctl input[type=checkbox] { width: 20px; height: 20px; vertical-align: -4px; }
+    #qres div.hit { padding: 11px 6px; }
+    .ctl label:has(input[type=checkbox]) { display: inline-block; padding: 4px 0; }
+    .ctl input[type=range] { height: 32px; }
+  }
+  @media (prefers-reduced-motion: reduce) { button { transition: none; } }
 </style>
 </head>
 <body>
@@ -69,7 +94,13 @@
 
   <div class="ctl"><label><input type="checkbox" id="showAm" checked> Show 1920 businesses</label><br>
     <label><input type="checkbox" id="showRings" checked> Show 1, 2 and 3 mile rings</label><br>
-    <label><input type="checkbox" id="showOutside" checked> Show businesses outside the walking reach (faded dots)</label>
+    <label><input type="checkbox" id="showOutside" checked> Show businesses outside the walking reach (faded dots)</label><br>
+    <label><input type="checkbox" id="showSb"> Show the Sanborn fire insurance map behind the dots</label>
+    <div id="sbBox" style="display:none;margin:2px 0 0 24px">
+      <label>Edition <select id="sbYear"><option value="1913">1913 (closest to 1920)</option><option value="1897">1897</option></select></label>
+      <label style="display:block">Opacity <input type="range" id="sbOpacity" min="10" max="100" value="70"></label>
+      <div class="note" id="sbNote"></div>
+    </div>
     <input type="checkbox" id="showSt" style="display:none">
     <div style="display:none"><label><input type="checkbox" id="showBn"></label><label><input type="checkbox" id="showSteps"></label><span id="rampHint"></span></div></div>
 
@@ -336,6 +367,105 @@ const PALETTE = ["#0b4f6c", "#1f9e9a", "#9bc53d", "#f2c14e", "#e8743b"];   // wa
 const $ = id => document.getElementById(id);
 const statusEl = $("status");
 
+
+// ---------- Sanborn fire insurance maps (loaded only when the box is ticked) ----------
+// The sheets are the 1897 and 1913 Rockford volumes, georeferenced with mapsnap and drawn by Allmaps into the
+// background map's WebGL canvas, under the street lines and dots. Images come from Chronoscope / Library of Congress.
+const SB = { editions: { "1913": ["sanborn02127_004", "sanborn02127_005"], "1897": ["sanborn02127_003"] },
+  layer: null, script: null, token: 0, notes: {}, cache: {} };
+// Phones and tablets: Chronoscope advertises each sheet as one huge tile, which reserves ~13 MB of graphics memory
+// per sheet and crashes iPhones. Re-declare it as half-size tiles (about 3 MB). Desktops keep full detail.
+// (?lowmem=1 or ?lowmem=0 forces either mode for testing.)
+const SB_LOWMEM = (() => { const v = new URLSearchParams(location.search).get("lowmem");
+  return v !== null ? v === "1" : (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Mac/i.test(navigator.platform)) || matchMedia("(pointer: coarse)").matches); })();
+if (SB_LOWMEM) {
+  const realFetch = window.fetch.bind(window);
+  window.fetch = function (input, init) {
+    const url = typeof input === "string" ? input : (input && input.url) || "";
+    if (url.indexOf("cdn.chronoscope.io") === -1 || !/info\.json(\?|$)/.test(url)) return realFetch(input, init);
+    return realFetch(input, init).then(res => {
+      if (!res.ok) return res;
+      return res.clone().json().then(info => {
+        if (info && info.width && info.height) info.tiles = [{ width: Math.ceil(info.width / 2), height: Math.ceil(info.height / 2), scaleFactors: [2, 4, 8] }];
+        return new Response(JSON.stringify(info), { status: 200, headers: { "Content-Type": "application/json" } });
+      }).catch(() => res);
+    });
+  };
+}
+function sbScript() {
+  if (!SB.script) SB.script = new Promise((resolve, reject) => {
+    const el = document.createElement("script"); el.src = "vendor/allmaps-sanborn.js";
+    el.onload = resolve; el.onerror = () => { SB.script = null; reject(new Error("the Sanborn map loader did not download")); };
+    document.head.appendChild(el);
+  });
+  return SB.script;
+}
+async function sbAnnotation(id) {
+  if (!SB.cache[id]) {
+    const res = await fetch("data/sanborn/" + id + ".main.iiif.json");
+    if (!res.ok) throw new Error(id + ": HTTP " + res.status);
+    SB.cache[id] = await res.json();
+  }
+  return SB.cache[id];
+}
+async function sbWaitStyle(gl) {
+  for (let i = 0; i < 100; i++) {
+    let st = null; try { st = gl.getStyle(); } catch (e) { /* not ready */ }
+    if (st && st.layers) return;
+    await new Promise(r => setTimeout(r, 200));
+  }
+  throw new Error("the background map is not ready");
+}
+// one extra zoom level while the Sanborn sheets are showing, so their small print is easier to read
+function sbZoom() { try { map.setMaxZoom($("showSb").checked ? 20 : 19); } catch (e) { /* map not ready */ } }
+function sbNote(t) { const el = $("sbNote"); if (el) el.textContent = t; }
+async function sbShow(year) {
+  const token = ++SB.token;
+  if (!baseLayer || streetBase) { sbNote("The background map is unavailable, so the Sanborn map cannot be drawn."); $("showSb").checked = false; $("sbBox").style.display = "none"; return; }
+  const gl = baseLayer.getMaplibreMap();
+  sbNote("Loading the " + year + " sheets…");
+  try {
+    await Promise.all([sbScript(), sbWaitStyle(gl)]);
+    if (token !== SB.token) return;
+    if (!window.AllmapsMapbox || !AllmapsMapbox.WarpedMapLayer) throw new Error("the Sanborn map loader is incomplete");
+    if (!SB.layer) {
+      SB.layer = new AllmapsMapbox.WarpedMapLayer({ layerId: "sanborn",
+        maxTotalOverviewResolutionRatio: 4, overviewRequestViewportBufferRatio: 1.5, overviewPruneViewportBufferRatio: 2,
+        requestViewportBufferRatio: 1, pruneViewportBufferRatio: 1.5, anticipateInteraction: false, maxDevicePixelRatio: SB_LOWMEM ? 1 : 0 });
+      const firstSymbol = (gl.getStyle().layers.find(l => l.type === "symbol") || {}).id;   // keep the map's own labels on top
+      gl.addLayer(SB.layer, firstSymbol);
+    }
+    SB.layer.setOpacity(Number($("sbOpacity").value) / 100);
+    SB.layer.clear();
+    const anns = await Promise.all(SB.editions[year].map(sbAnnotation));
+    if (token !== SB.token) return;
+    anns.forEach(a => SB.layer.addGeoreferenceAnnotation(a));
+    sbNote("Sanborn Map Company, Rockford " + year + " (Library of Congress), georeferenced with mapsnap. Sheets sharpen as you zoom in. Sheets are not drawn where the atlas has no coverage.");
+  } catch (err) {
+    console.warn("Sanborn overlay failed:", err);
+    sbNote("The Sanborn map could not be drawn (" + String(err && err.message || err).slice(0, 120) + "). The rest of the map still works.");
+  }
+}
+function sbHide() { ++SB.token; try { if (SB.layer) SB.layer.clear(); } catch (e) { /* layer already gone */ } sbNote(""); }
+$("showSb").addEventListener("change", () => {
+  const on = $("showSb").checked; $("sbBox").style.display = on ? "block" : "none";
+  sbZoom();
+  if (on) sbShow($("sbYear").value); else sbHide();
+  if (typeof state !== "undefined" && state) draw();
+  writeHash();
+});
+$("sbYear").addEventListener("change", () => { if ($("showSb").checked) sbShow($("sbYear").value); writeHash(); });
+$("sbOpacity").addEventListener("input", () => { try { if (SB.layer) SB.layer.setOpacity(Number($("sbOpacity").value) / 100); } catch (e) { /* not ready */ } });
+$("sbOpacity").addEventListener("change", writeHash);
+// a shared link can open with the overlay already on: #...&sb=1913&so=70
+(function () {
+  const q = new URLSearchParams(location.hash.slice(1)), y = q.get("sb"), o = parseFloat(q.get("so"));
+  if (y && SB.editions[y]) {
+    $("sbYear").value = y; if (Number.isFinite(o) && o >= 10 && o <= 100) $("sbOpacity").value = Math.round(o);
+    $("showSb").checked = true; $("sbBox").style.display = "block"; setTimeout(() => { sbZoom(); sbShow(y); }, 0);
+  }
+})();
+
 // ---------- map ----------
 const map = L.map("map", { zoomControl: true, maxZoom: 19 }).setView([42.2711, -89.0940], 14);
 let baseLayer = null, streetBase = false, mapErrors = 0;
@@ -344,6 +474,7 @@ let baseLayer = null, streetBase = false, mapErrors = 0;
 function useStreetBase(reason) {
   if (streetBase) return;
   streetBase = true;
+  if (typeof sbHide === "function") { sbHide(); if ($("showSb").checked) { $("showSb").checked = false; $("sbBox").style.display = "none"; } $("showSb").disabled = true; }
   try { if (baseLayer) map.removeLayer(baseLayer); } catch (e) { /* already gone */ }
   map.attributionControl.addAttribution("&copy; OpenStreetMap contributors");
   document.getElementById("baseNote").textContent = "The background map is unavailable (" + String(reason || "unknown reason").slice(0, 160) + "), so the street network is shown instead.";
@@ -405,7 +536,7 @@ function labels() {
   $("minOut").textContent = $("minutes").value;
   $("legendEnd").textContent = $("minutes").value + " min";
   const v = +$("speed").value;
-  $("spdOut").textContent = `${v.toFixed(2)} m/s (${(v * 3.6).toFixed(1)} km/h)`;
+  $("spdOut").textContent = `${v.toFixed(2)} m/s (${(v * 2.236936).toFixed(1)} mph)`;
 }
 function schedule() {
   labels();
@@ -518,12 +649,12 @@ async function ensureArea(lat, lng, radiusM, token) {
 function showStats(rA, rR, cA, cR) {
   const km = m => (m / 1000).toFixed(1), pct = rR.lengthM > 0 ? Math.round((rA.lengthM / rR.lengthM - 1) * 100) : 0;
   const amen = POIS.cats.map((_, i) => i);
-  const rows = amen.map(c => `<tr class="catrow${catOn[c] ? "" : " off"}" data-c="${c}"><td><input type="checkbox" ${catOn[c] ? "checked" : ""} aria-label="Show ${esc(POIS.cats[c])}"><span class="dot" style="background:${CAT_COLORS[c]}"></span>${POIS.cats[c]}</td><td>${cA[c]}</td><td>of ${cR[c]}</td></tr>`).join("");
+  const rows = amen.map(c => `<tr class="catrow${catOn[c] ? "" : " off"}" data-c="${c}"><td><input type="checkbox" ${catOn[c] ? "checked" : ""} aria-label="Show ${esc(POIS.cats[c])}"><span class="dot" style="background:${CAT_COLORS[c]}"></span>${POIS.cats[c]}</td><td>${fmtN(cA[c])}</td><td>of ${fmtN(cR[c])}</td></tr>`).join("");
   const totA = amen.reduce((s, c) => s + cA[c], 0), totR = amen.reduce((s, c) => s + cR[c], 0);
   const present = amen.filter(c => cA[c] > 0).length, perKm = rA.lengthM > 0 ? (totA / (rA.lengthM / 1000)).toFixed(1) : "0";
   $("stats").innerHTML = `
     <div><b>${km(rA.lengthM)} km</b> of streets reachable (${pct >= 0 ? "+" : ""}${pct}% vs. reference ${km(rR.lengthM)} km)</div>
-    <table>${rows}<tr><td><b>All 1920 businesses</b></td><td><b>${totA}</b></td><td>of ${totR}</td></tr></table>
+    <table>${rows}<tr><td><b>All 1920 businesses</b></td><td><b>${fmtN(totA)}</b></td><td>of ${fmtN(totR)}</td></tr></table>
     <div class="note"><a href="#" id="catAll">Show all</a> &middot; <a href="#" id="catNone">Hide all</a> &middot; tick a row to show or hide that kind of business.</div>
     <div class="note">${present} of ${amen.length} kinds of business present, ${perKm} businesses per km of reachable street. Counts show your settings, then the reference.</div>`;
 }
@@ -568,6 +699,8 @@ function draw() {
     ctx.moveTo(X(pts[0]), Y(pts[1]));
     for (let i = 2; i < pts.length; i += 2) ctx.lineTo(X(pts[i]), Y(pts[i + 1]));
   };
+  // with the Sanborn map on, draw the streets half-transparent so the sheets stay readable beneath them
+  ctx.globalAlpha = $("showSb").checked ? 0.5 : 1;
   // reference reach in grey, only where the current settings do not reach
   const adjFrac = new Map(state.reachAdj.items.map(it => [it.e, it.frac]));
   ctx.beginPath(); ctx.strokeStyle = "rgba(90,90,90,0.5)"; ctx.lineWidth = Math.max(1, width * 0.7);
@@ -583,6 +716,7 @@ function draw() {
     for (const it of list) trace(it);
     ctx.stroke();
   });
+  ctx.globalAlpha = 1;
 
   // flights of steps next to the area you can reach, so the places where avoiding stairs cuts a route can be seen
   if ($("showSteps").checked && z >= 13) {
@@ -646,6 +780,7 @@ function writeHash() {
   hashTimer = setTimeout(() => {
     const q = new URLSearchParams({ city: CITY, lat: origin.lat.toFixed(5), lng: origin.lng.toFixed(5), min: $("minutes").value,
       spd: $("speed").value, st: $("steps").checked ? 1 : 0, z: map.getZoom() });
+    if ($("showSb").checked) { q.set("sb", $("sbYear").value); q.set("so", $("sbOpacity").value); }
     try { history.replaceState(null, "", "#" + q.toString()); } catch (e) { /* some browsers limit this */ }
   }, 300);
 }
@@ -660,7 +795,7 @@ function applyHash(meta, fresh) {
   const sp = num("spd", 0.8, 1.8); if (sp !== null) $("speed").value = sp;
   if (q.get("st") === "1") $("steps").checked = true;
   labels();
-  const z = num("z", 10, 19);
+  const z = num("z", 10, 20);
   return z !== null ? z : 14;
 }
 $("copyLink").addEventListener("click", async () => {
@@ -687,13 +822,15 @@ function businessesAt(e) {
   return hits.sort((a, b) => a[0] - b[0]).slice(0, 8).map(h => h[1]);
 }
 const streetViewUrl = (lat, lng) => "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=" + lat.toFixed(6) + "," + lng.toFixed(6);
+const fmtN = n => Number(n).toLocaleString("en-US");
+const plural = (n, one, many) => n === 1 ? one : many;
 function popupHtml(hits) {
   const first = POIS.pts[hits[0]];
   const sv = `<div class="svthumb" data-lat="${first[1]}" data-lng="${first[0]}"></div>`
     + `<div style="margin:2px 0 6px"><a href="${streetViewUrl(first[1], first[0])}" target="_blank" rel="noopener">Open in Google Street View &#8599;</a><br><span style="font-size:11px;color:#777">Shows the site today. The 1920 building may be gone, and the dot is placed from the address.</span></div>`;
   return sv + hits.map(i => {
     const p = POIS.pts[i];
-    return `<div style="margin:0 0 8px"><b>${esc(p[4] || "Unnamed listing")}</b><br>${esc(p[5])}<br><span style="color:#555">${esc(p[6])}</span><br><span style="font-size:12px"><span class="dot" style="background:${CAT_COLORS[p[2]]};width:8px;height:8px"></span>${esc(POIS.cats[p[2]])}</span></div>`;
+    return `<div style="margin:0 0 8px"><b>${esc(p[4] || "Unnamed listing")}</b>${p[5] ? "<br>" + esc(p[5]) : ""}${p[6] ? '<br><span style="color:#555">' + esc(p[6]) + "</span>" : ""}<br><span style="font-size:12px"><span class="dot" style="background:${CAT_COLORS[p[2]]};width:8px;height:8px"></span>${esc(POIS.cats[p[2]])}</span></div>`;
   }).join("") + '<div style="font-size:11px;color:#777">McCoy\'s Rockford City Directory, 1920</div>';
 }
 map.on("click", e => {
@@ -745,11 +882,11 @@ function updateRadii() {
     const d = Math.hypot((p[0] - origin.lng) * cosL * R_LON, (p[1] - origin.lat) * R_LAT);
     for (let k = 0; k < 3; k++) if (d <= (k + 1) * MI) cnt[k][p[2]]++;
   }
-  const rows = POIS.cats.map((name, c) => `<tr><td><span class="dot" style="background:${CAT_COLORS[c]}"></span>${esc(name)}</td><td>${cnt[0][c]}</td><td>${cnt[1][c]}</td><td>${cnt[2][c]}</td></tr>`).join("");
+  const rows = POIS.cats.map((name, c) => `<tr><td><span class="dot" style="background:${CAT_COLORS[c]}"></span>${esc(name)}</td><td>${fmtN(cnt[0][c])}</td><td>${fmtN(cnt[1][c])}</td><td>${fmtN(cnt[2][c])}</td></tr>`).join("");
   const tot = k => cnt[k].reduce((a, b) => a + b, 0);
   el.innerHTML = `<div style="margin-top:14px"><b>Within a radius of the start point</b></div>
     <table><tr><td></td><td><b>1 mi</b></td><td><b>2 mi</b></td><td><b>3 mi</b></td></tr>${rows}
-    <tr><td><b>All 1920 businesses</b></td><td><b>${tot(0)}</b></td><td><b>${tot(1)}</b></td><td><b>${tot(2)}</b></td></tr></table>
+    <tr><td><b>All 1920 businesses</b></td><td><b>${fmtN(tot(0))}</b></td><td><b>${fmtN(tot(1))}</b></td><td><b>${fmtN(tot(2))}</b></td></tr></table>
     <div class="note">Straight-line distance, counting every listing on the map, not only those you could walk to. Counts are cumulative: the 2 mi column includes the 1 mi.</div>`;
 }
 
@@ -819,7 +956,7 @@ function updateQInfo() {
   let n = 0, far = 0;
   if (state) for (const i of matchList) { const m = dotMode(i); if (m === 1) n++; else if (m === 2) far++; }
   $("qinfo").textContent = matchList.length
-    ? `${n} of ${matchList.length} matching listings are within your walking reach` + (far ? `; ${far} more within 3 miles are shown faded.` : ". Only those are shown.")
+    ? `${fmtN(n)} of ${fmtN(matchList.length)} matching ${plural(matchList.length, "listing is", "listings are")} within your walking reach` + (far ? `; ${fmtN(far)} more within 3 miles ${plural(far, "is", "are")} shown faded.` : ". Only those are shown.")
     : "No listing matches that search.";
 }
 $("q").addEventListener("input", () => { clearTimeout(qTimer); qTimer = setTimeout(runSearch, 200); });
